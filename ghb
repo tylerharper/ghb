@@ -12,10 +12,32 @@ token = subprocess.Popen(["git", "config", "--global", "github.token"], stdout=s
 
 github = snooze.Snooze('github.com/api/v2/json', secure=True)
 
-def display_info(info):
-    for x in info:
-        for y in x:
-            print '%s: %s' % (str(y), str(x[y]))
+colors = {
+            'black':    "\033[1;30m",
+            'red':      "\033[1;31m",
+            'green':    "\033[1;32m",
+            'yellow':   "\033[1;33m",
+            'blue':     "\033[1;34m",
+            'magenta':  "\033[1;35m",
+            'cyan':     "\033[1;36m",
+            'white':    "\033[1;37m",
+            'bold':     "\033[1m",
+            'reset':    "\033[1;m",
+         }
+
+def render(template, context):
+    # hacks.
+    for outer in context:
+        try:
+            for inner in context[outer]:
+                inner.update(colors)
+        except AttributeError:
+            context.update(colors)
+            break
+
+    v = pystache.View(context=context)
+    v.template_name = template
+    print v.render()
 
 def display_user(info):
     for x in info:
@@ -26,10 +48,43 @@ def edit(option, arg):
     resp_python = json.loads(resp)
     display_user(resp_python['user'])
 
-def show(arg):
-    resp = github.user.show.username[arg](_method_='get')
-    resp_python = json.loads(resp)
-    display_user(resp_python['user'])
+def show(thing, name, *args):
+    if thing == 'repo':
+        resp = github.repos.show.repo[name](_method_='get')
+        results = json.loads(resp)
+        results['repository'] = [results['repository']] # used for pystache
+        render('templates/show/repo', results)
+        
+    elif thing == 'user':
+        resp = github.user.show.user[name](_method_='get')
+        results = json.loads(resp)
+        render('templates/show/user', results['user'])
+
+    elif thing == 'repos':
+        resp = github.repos.show.user[name](_method_='get')
+        results = json.loads(resp)
+        render('templates/show/user-repos', results)
+
+    elif thing == 'issue':
+        try: 
+            number = args[0]
+        except IndexError:
+            print "error: issue number requred" 
+            sys.exit(1)
+
+        resp = github.issues.show.repo[name].number[number](_method_ = 'get')
+        issue = json.loads(resp)
+        render('templates/show/issue', issue['issue'])
+
+    elif thing == 'issues':
+        try:
+            state = args[0]
+        except IndexError:
+            state = 'open'
+
+        resp = github.issues.list.repo[name].state[state](_method_ = 'get')
+        issues = json.loads(resp)
+        render('templates/show/issues', issues)
 
 def create(name, description=None, homepage=None, public=1):
     args = {'name': name, 'public':public, 'login':user, 'token' : token}
@@ -49,46 +104,44 @@ def delete(name, delete_token=None):
     print 'If you are sure you want to delete repository %s call:' % name
     print '%s %s %s' % (sys.argv[0], sys.argv[1], del_token)
 
-def issue_list(repo, username=user, state='open'):
-    resp = github.issues.list.user[user].repo[repo].state[state](_method_ = 'get')
-    issues = json.loads(resp)
-    v = pystache.View(context=issues)
-    v.template_name = 'templates/issue-list'
-    print v.render()
-    
 def repo_search(search):
     resp = github.repos.search.search_str[search](_method_='get')
     results = json.loads(resp)
-    v = pystache.View(context=results)
-    v.template_name = 'templates/repo-search'
-    print v.render() 
+    render('templates/repo-search', results)
  
-def user_repos(username=user):
-    resp = github.repos.show.user[username](_method_='get')
-    results = json.loads(resp)
-    v = pystache.View(context=results)
-    v.template_name = 'templates/user-repos'
-    print v.render() 
+def search(target, *args):
+    if len(args) == 0:
+        print "error: at least one search term required"
+        sys.exit(1)
+
+    search = '+'.join(args)
+
+    if target == 'repos':
+        resp = github.repos.search.search_str[search](_method_='get')
+        results = json.loads(resp)
+        render('templates/repo-search', results)
+
+    elif target == 'users':
+        resp = github.user.search.search_str[search](_method_='get')
+        results = json.loads(resp)
+        render('templates/user-search', results)
+        
+        
+def add_issue(repo, title, body, user=user, token=token):
+    resp = github.issues.open.repo[repo](_method_='post', login=user, token=token, title=title, body=body)
+    print resp
     
-def show_repo(repo, username=user):
-    resp = github.repos.show.user[username].repo[repo](_method_='get')
-    results = json.loads(resp)
-    results['repository'] = [results['repository']] # used for pystache
-    v = pystache.View(context=results)
-    v.template_name = 'templates/show-repo'
-    print v.render()
 
 if __name__ == '__main__':
     fickle = Ficcle()
 
+    fickle.add_function(add_issue)
     fickle.add_function(edit)
     fickle.add_function(show)
+    fickle.add_function(search)
     fickle.add_function(create)
     fickle.add_function(delete)
-    fickle.add_function(issue_list, name='issue-list')
     fickle.add_function(repo_search, name='search-repo')
-    fickle.add_function(user_repos, name='user-repos')
-    fickle.add_function(show_repo, name='show-repo')
 
     fickle.run_ficcle()
 
