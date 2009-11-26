@@ -37,7 +37,19 @@ def render(template, context):
 
     v = pystache.View(context=context)
     v.template_name = template
-    print v.render()
+    text = v.render()
+    
+    output = ''
+    for line in text.split('\n'):
+        while len(line) > 80:
+            pos = line[:80].rfind(' ')
+            output = output + line[:pos] + '\n'
+            line = line[pos+1:]
+
+        output = output + line + '\n'
+
+    print output
+            
 
 def display_user(info):
     for x in info:
@@ -131,11 +143,15 @@ def add_issue(repo, title, body, user=user, token=token):
     resp = github.issues.open.repo[repo](_method_='post', login=user, token=token, title=title, body=body)
     print resp
     
+def edit_issue(repo, number, title, body, user=user, token=token):
+    resp = github.issues.edit.repo[repo].number[number](_method_='post', login=user, token=token, title=title, body=body)
+    print resp
 
 if __name__ == '__main__':
     fickle = Ficcle()
 
     fickle.add_function(add_issue)
+    fickle.add_function(edit_issue)
     fickle.add_function(edit)
     fickle.add_function(show)
     fickle.add_function(search)
