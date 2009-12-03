@@ -5,10 +5,10 @@ import sys
 import subprocess
 import os
 import pystache
-from ficcle import Ficcle
+from ficcle import Faccle, Ficcle
 
 TEMPLATE_PREFIX = "/usr/share/ghb/templates/"
-
+TEMPLATE_PREFIX = ''
 user = subprocess.Popen(["git", "config", "--global", "github.user"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
 token = subprocess.Popen(["git", "config", "--global", "github.token"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
 
@@ -62,6 +62,22 @@ def edit(option, arg):
     resp_python = json.loads(resp)
     display_user(resp_python['user'])
 
+class issue(object):
+    def show(self, name, state_number='open'):
+        try:
+            int(state_number)
+        except ValueError:
+
+            resp = github.issues.list.repo[name].state[state_number](_method_ = 'get')
+            issues = json.loads(resp)
+            render('templates/show/issues', issues)
+
+        else:
+            resp = github.issues.show.repo[name].number[state_number](_method_ = 'get')
+            issue = json.loads(resp)
+            render('templates/show/issue', issue['issue'])
+
+            
 def show(thing, name, *args):
     if thing == 'repo':
         resp = github.repos.show.repo[name](_method_='get')
@@ -160,6 +176,9 @@ if __name__ == '__main__':
     fickle.add_function(create)
     fickle.add_function(delete)
     fickle.add_function(repo_search, name='search-repo')
-
-    fickle.run_ficcle()
+    
+    faccle = Faccle()
+    faccle.add_object(issue)
+    faccle.run_faccle()
+#    fickle.run_ficcle()
 
