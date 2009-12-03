@@ -8,9 +8,10 @@ import pystache
 from ficcle import Faccle, Ficcle
 
 TEMPLATE_PREFIX = "/usr/share/ghb/templates/"
-TEMPLATE_PREFIX = ''
-user = subprocess.Popen(["git", "config", "--global", "github.user"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
-token = subprocess.Popen(["git", "config", "--global", "github.token"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
+TEMPLATE_PREFIX = ""
+
+github_login = subprocess.Popen(["git", "config", "--global", "github.user"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
+github_token = subprocess.Popen(["git", "config", "--global", "github.token"], stdout=subprocess.PIPE).stdout.read().strip('\n ') 
 
 github = snooze.Snooze('github.com/api/v2/json', secure=True)
 
@@ -50,24 +51,14 @@ def render(template, context):
 
         output = output + line + '\n'
 
-    print output
+    print output.strip()
             
-
-def display_user(info):
-    for x in info:
-        print '%s: %s' % (str(x), str(info[x]))
-
-def edit(option, arg):
-    resp = github.user.show.username[user](_method_='post', values={option: arg}, login=user, token=token)
-    resp_python = json.loads(resp)
-    display_user(resp_python['user'])
 
 class issue(object):
     def show(self, name, state_number='open'):
         try:
             int(state_number)
         except ValueError:
-
             resp = github.issues.list.repo[name].state[state_number](_method_ = 'get')
             issues = json.loads(resp)
             render('templates/show/issues', issues)
@@ -77,108 +68,88 @@ class issue(object):
             issue = json.loads(resp)
             render('templates/show/issue', issue['issue'])
 
-            
-def show(thing, name, *args):
-    if thing == 'repo':
+class user(object):
+    def show(self, name):
+        resp = github.user.show.user[name](_method_='get') 
+        results = json.loads(resp)
+        render('templates/show/user', results['user'])
+
+class users(object):
+    def search(self, *args):
+        if len(args) == 0:
+            print "error: at least one search term required"
+            sys.exit(1)
+
+        search = '+'.join(args)
+
+        resp = github.user.search.search_str[search](_method_='get')
+        results = json.loads(resp)
+        render('templates/search/users', results)
+        
+
+class repo(object):
+    def show(self, name):
         resp = github.repos.show.repo[name](_method_='get')
         results = json.loads(resp)
         results['repository'] = [results['repository']] # used for pystache
         render('templates/show/repo', results)
-        
-    elif thing == 'user':
-        resp = github.user.show.user[name](_method_='get')
-        results = json.loads(resp)
-        render('templates/show/user', results['user'])
 
-    elif thing == 'repos':
-        resp = github.repos.show.user[name](_method_='get')
+    def new(self, name, description=None, homepage=None, public=1):
+        args = {'name': name, 'public':public, 'login':github_login, 'token' : github_token}
+        if description != None:
+            args['description'] = description
+        if homepage != None:
+            args['homepage'] = homepage
+
+        resp = github.repos.create(_method_='post', **args)
+
+    def delete(self, name, delete_token=None):
+        resp = github.repos.delete.repo[name](_method_='post', delete_token=delete_token, login=github_login, token=github_token)
+        
+        try:
+            del_token = json.loads(resp)['delete_token']
+            print 'If you are sure you want to delete repository %s call:' % name
+            print '%s delete repo %s %s' % (sys.argv[0], name, del_token)
+        except KeyError:
+            status = json.loads(resp)['status']
+            if status == 'deleted':
+                print '%s has been deleted' % name
+
+class repos(object):
+    def show(self, user):
+        resp = github.repos.show.user[user](_method_='get')
         results = json.loads(resp)
         render('templates/show/user-repos', results)
 
-    elif thing == 'issue':
-        try: 
-            number = args[0]
-        except IndexError:
-            print "error: issue number requred" 
+    def search(self, *args):
+        if len(args) == 0:
+            print "error: at least one search term required"
             sys.exit(1)
 
-        resp = github.issues.show.repo[name].number[number](_method_ = 'get')
-        issue = json.loads(resp)
-        render('templates/show/issue', issue['issue'])
+        search = '+'.join(args)
 
-    elif thing == 'issues':
-        try:
-            state = args[0]
-        except IndexError:
-            state = 'open'
-
-        resp = github.issues.list.repo[name].state[state](_method_ = 'get')
-        issues = json.loads(resp)
-        render('templates/show/issues', issues)
-
-def create(name, description=None, homepage=None, public=1):
-    args = {'name': name, 'public':public, 'login':user, 'token' : token}
-    if description != None:
-        args['description'] = description
-    if homepage != None:
-        args['homepage'] = homepage
-
-    resp = github.repos.create(_method_='post', **args)
-    print resp
-
-def delete(name, delete_token=None):
-    resp = github.repos.delete.repo[name](_method_='post', delete_token=delete_token, login=user, token=token)
-    
-    del_token = json.loads(resp)['delete_token']
-    
-    print 'If you are sure you want to delete repository %s call:' % name
-    print '%s %s %s' % (sys.argv[0], sys.argv[1], del_token)
-
-def repo_search(search):
-    resp = github.repos.search.search_str[search](_method_='get')
-    results = json.loads(resp)
-    render('templates/repo-search', results)
- 
-def search(target, *args):
-    if len(args) == 0:
-        print "error: at least one search term required"
-        sys.exit(1)
-
-    search = '+'.join(args)
-
-    if target == 'repos':
         resp = github.repos.search.search_str[search](_method_='get')
         results = json.loads(resp)
-        render('templates/repo-search', results)
+        render('templates/search/repos', results)
 
-    elif target == 'users':
-        resp = github.user.search.search_str[search](_method_='get')
-        results = json.loads(resp)
-        render('templates/user-search', results)
         
-        
-def add_issue(repo, title, body, user=user, token=token):
+
+def add_issue(repo, title, body, user=github_login, token=github_token):
     resp = github.issues.open.repo[repo](_method_='post', login=user, token=token, title=title, body=body)
     print resp
     
-def edit_issue(repo, number, title, body, user=user, token=token):
+
+def edit_issue(repo, number, title, body, user=github_login, token=github_token):
     resp = github.issues.edit.repo[repo].number[number](_method_='post', login=user, token=token, title=title, body=body)
     print resp
 
 if __name__ == '__main__':
-    fickle = Ficcle()
-
-    fickle.add_function(add_issue)
-    fickle.add_function(edit_issue)
-    fickle.add_function(edit)
-    fickle.add_function(show)
-    fickle.add_function(search)
-    fickle.add_function(create)
-    fickle.add_function(delete)
-    fickle.add_function(repo_search, name='search-repo')
-    
     faccle = Faccle()
     faccle.add_object(issue)
+    faccle.alias('issue', 'issues', '-i')
+    faccle.add_object(repo)
+    faccle.add_object(repos)
+    faccle.add_object(user)
+    faccle.add_object(users)
     faccle.run_faccle()
-#    fickle.run_ficcle()
 
